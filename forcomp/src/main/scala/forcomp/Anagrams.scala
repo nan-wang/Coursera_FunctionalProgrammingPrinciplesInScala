@@ -34,10 +34,14 @@ object Anagrams {
    *
    *  Note: you must use `groupBy` to implement this method!
    */
-  def wordOccurrences(w: Word): Occurrences = ???
+  def wordOccurrences(w: Word): Occurrences =
+    (((w toLowerCase) groupBy (x => x)) map {
+      case (c, l) => (c, l.length)
+    } toList).sortBy(p => p._1)
 
   /** Converts a sentence into its character occurrence list. */
-  def sentenceOccurrences(s: Sentence): Occurrences = ???
+  def sentenceOccurrences(s: Sentence): Occurrences =
+    wordOccurrences(s.foldLeft("")(_.filter(_.isLetter) ++ _))
 
   /** The `dictionaryByOccurrences` is a `Map` from different occurrences to a sequence of all
    *  the words that have that occurrence count.
@@ -54,10 +58,15 @@ object Anagrams {
    *    List(('a', 1), ('e', 1), ('t', 1)) -> Seq("ate", "eat", "tea")
    *
    */
-  lazy val dictionaryByOccurrences: Map[Occurrences, List[Word]] = ???
+  lazy val dictionaryByOccurrences: Map[Occurrences, List[Word]] =
+    dictionary groupBy wordOccurrences
 
   /** Returns all the anagrams of a given word. */
-  def wordAnagrams(word: Word): List[Word] = ???
+  def wordAnagrams(word: Word): List[Word] =
+    (dictionaryByOccurrences get wordOccurrences(word)) match {
+      case Some(anagrams) => anagrams
+      case None => List()
+    }
 
   /** Returns the list of all subsets of the occurrence list.
    *  This includes the occurrence itself, i.e. `List(('k', 1), ('o', 1))`
@@ -81,7 +90,30 @@ object Anagrams {
    *  Note that the order of the occurrence list subsets does not matter -- the subsets
    *  in the example above could have been displayed in some other order.
    */
-  def combinations(occurrences: Occurrences): List[Occurrences] = ???
+  def combinations(occurrences: Occurrences): List[Occurrences] = {
+    val num_char = occurrences.length
+    val all_char_freq: List[(Char, Int)] = for {
+        c_o <- occurrences
+        n <- 1 to c_o._2
+      } yield (c_o._1, n)
+    val num_char_freq: Int = all_char_freq.length
+    def isValid(char_freq: (Char, Int), occurrences: Occurrences): Boolean =
+      if (occurrences.length == 0) true
+      else occurrences forall (x => x._1 != char_freq._1)
+    def choose_k_chars(k: Int): Set[Occurrences] = {
+      if (k == 0) Set(List())
+      else {
+        for {
+          each_comb <- choose_k_chars(k-1)
+          each_char_freq <- all_char_freq
+          if isValid(each_char_freq, each_comb)
+        } yield (each_char_freq::each_comb).sorted
+      }
+    }
+    (for {
+      k <- 0 to num_char_freq
+    } yield choose_k_chars(k)).toList.flatten
+  }
 
   /** Subtracts occurrence list `y` from occurrence list `x`.
    *
@@ -93,7 +125,12 @@ object Anagrams {
    *  Note: the resulting value is an occurrence - meaning it is sorted
    *  and has no zero-entries.
    */
-  def subtract(x: Occurrences, y: Occurrences): Occurrences = ???
+  def subtract(x: Occurrences, y: Occurrences): Occurrences = {
+    def loop(y: Occurrences, acc: Map[Char, Int]): Map[Char, Int] =
+      if (y == Nil) acc
+      else loop(y.tail, acc updated (y.head._1, (acc(y.head._1) - y.head._2)))
+    loop(y, x.toMap).toList.filter(_._2>0).sorted
+  }
 
   /** Returns a list of all anagram sentences of the given sentence.
    *
@@ -135,5 +172,17 @@ object Anagrams {
    *
    *  Note: There is only one anagram of an empty sentence.
    */
-  def sentenceAnagrams(sentence: Sentence): List[Sentence] = ???
+  def sentenceAnagrams(sentence: Sentence): List[Sentence] = {
+    val s_occ = sentenceOccurrences(sentence)
+    def find_valid_occ(cur_occ: Occurrences): List[Sentence] =
+      if (cur_occ.isEmpty) List(List())
+      else {
+        for {
+          each_occ <- combinations(cur_occ)
+          each_w <- (dictionaryByOccurrences withDefaultValue List())(each_occ)
+          next_ws <- find_valid_occ(subtract(cur_occ, each_occ))
+        } yield each_w :: next_ws
+      }
+    find_valid_occ(s_occ)
+    }
 }
